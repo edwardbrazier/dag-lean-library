@@ -1,0 +1,10 @@
+name = "DagLeanLibrary"
+version = "0.1.0"
+defaultTargets = ["dagleanlibrary"]
+
+[[lean_lib]]
+name = "DagLeanLibrary"
+
+[[lean_exe]]
+name = "dagleanlibrary"
+root = "Main"
