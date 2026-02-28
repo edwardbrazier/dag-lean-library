@@ -11,7 +11,15 @@ set -euo pipefail
 #   4. Fetch lake package dependencies
 #   5. Build the project to verify everything works
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Resolve the repository root. Some environments (e.g. Codex) copy the script
+# to a temp path before running it, so BASH_SOURCE[0] does not point into the
+# repo. Prefer git's own detection from $PWD; fall back to the relative-to-
+# script path for cases where git is not yet installed.
+if git rev-parse --show-toplevel >/dev/null 2>&1; then
+  ROOT_DIR="$(git rev-parse --show-toplevel)"
+else
+  ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+fi
 LEAN_TOOLCHAIN_FILE="$ROOT_DIR/lean-toolchain"
 
 if [[ ! -f "$LEAN_TOOLCHAIN_FILE" ]]; then
