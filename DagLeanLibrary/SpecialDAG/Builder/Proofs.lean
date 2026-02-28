@@ -1,5 +1,6 @@
 import DagLeanLibrary.SpecialDAG.Builder.Implementation
 import DagLeanLibrary.SpecialDAG.Proofs
+import Std.Data.HashMap.Lemmas
 
 namespace DagLeanLibrary
 namespace SpecialDAG
@@ -202,7 +203,80 @@ private theorem addEdge_some_noIsolatedNodes
     (hH : AddEdgeSuccessHyps g g' src dst srcLabel dstLabel) :
     ∀ n, Interface.nodeLabel? g' n ≠ none →
       Interface.predecessors g' n ≠ [] ∨ Interface.successors g' n ≠ [] := by
-  sorry
+  rcases hH with ⟨_, _, _, _, _, _, _, _, hResult⟩
+  subst hResult
+  intro n hnLbl
+  by_cases hSrc : n = src
+  · subst n
+    right
+    apply List.ne_nil_of_mem
+    simpa [Interface.successors, successors] using
+      (mem_eraseDups_of_mem
+        ((g.edges ++ [(src, dst)]).filterMap fun (s, d) => if s == src then some d else none)
+        dst
+        (List.mem_filterMap.mpr ⟨(src, dst), by simp, by simp⟩))
+  · by_cases hDst : n = dst
+    · subst n
+      left
+      apply List.ne_nil_of_mem
+      simpa [Interface.predecessors, predecessors] using
+        (mem_eraseDups_of_mem
+          ((g.edges ++ [(src, dst)]).filterMap fun (s, d) => if d == dst then some s else none)
+          src
+          (List.mem_filterMap.mpr ⟨(src, dst), by simp, by simp⟩))
+    · have hnLblOld : Interface.nodeLabel? g n ≠ none := by
+        have hGetEq :
+            Interface.nodeLabel?
+              ({ edges := g.edges ++ [(src, dst)]
+               , nodeLabels := g.nodeLabels |>.insert src srcLabel |>.insert dst dstLabel
+               , labelToNode := g.labelToNode |>.insert srcLabel src |>.insert dstLabel dst
+               } : Graph)
+              n = Interface.nodeLabel? g n := by
+          have hSrc' : src ≠ n := by simpa [eq_comm] using hSrc
+          have hDst' : dst ≠ n := by simpa [eq_comm] using hDst
+          simp [Interface.nodeLabel?, nodeLabel?, Std.HashMap.getElem?_insert, hSrc', hDst']
+        intro hNone
+        exact hnLbl (by simpa [hGetEq] using hNone)
+      have hIncidentOld := hWF.noIsolatedNodes n hnLblOld
+      cases hIncidentOld with
+      | inl hPredOld =>
+          left
+          cases hPredList : Interface.predecessors g n with
+          | nil => cases hPredOld hPredList
+          | cons p ps =>
+              apply List.ne_nil_of_mem
+              have hpOld : p ∈ Interface.predecessors g n := by simp [hPredList]
+              have hpOld' : p ∈ (g.edges.filterMap fun (s, d) => if d == n then some s else none).eraseDups := by
+                simpa [Interface.predecessors, predecessors] using hpOld
+              have hpOldRaw : p ∈ g.edges.filterMap (fun (s, d) => if d == n then some s else none) :=
+                mem_of_mem_eraseDups _ _ hpOld'
+              rcases List.mem_filterMap.mp hpOldRaw with ⟨e, heMem, heVal⟩
+              have hpNewRaw : p ∈
+                  (g.edges ++ [(src, dst)]).filterMap (fun (s, d) => if d == n then some s else none) :=
+                List.mem_filterMap.mpr ⟨e, by simp [heMem], heVal⟩
+              have hpNew' : p ∈
+                  ((g.edges ++ [(src, dst)]).filterMap fun (s, d) => if d == n then some s else none).eraseDups :=
+                mem_eraseDups_of_mem _ _ hpNewRaw
+              simpa [Interface.predecessors, predecessors] using hpNew'
+      | inr hSuccOld =>
+          right
+          cases hSuccList : Interface.successors g n with
+          | nil => cases hSuccOld hSuccList
+          | cons c cs =>
+              apply List.ne_nil_of_mem
+              have hcOld : c ∈ Interface.successors g n := by simp [hSuccList]
+              have hcOld' : c ∈ (g.edges.filterMap fun (s, d) => if s == n then some d else none).eraseDups := by
+                simpa [Interface.successors, successors] using hcOld
+              have hcOldRaw : c ∈ g.edges.filterMap (fun (s, d) => if s == n then some d else none) :=
+                mem_of_mem_eraseDups _ _ hcOld'
+              rcases List.mem_filterMap.mp hcOldRaw with ⟨e, heMem, heVal⟩
+              have hcNewRaw : c ∈
+                  (g.edges ++ [(src, dst)]).filterMap (fun (s, d) => if s == n then some d else none) :=
+                List.mem_filterMap.mpr ⟨e, by simp [heMem], heVal⟩
+              have hcNew' : c ∈
+                  ((g.edges ++ [(src, dst)]).filterMap fun (s, d) => if s == n then some d else none).eraseDups :=
+                mem_eraseDups_of_mem _ _ hcNewRaw
+              simpa [Interface.successors, successors] using hcNew' 
 
 -- ── nodeLabelRoundTrip for addEdge ───────────────────────────────────────────
 
@@ -212,6 +286,11 @@ private theorem addEdge_some_nodeLabelRoundTrip
     (g' : Graph)
     (hH : AddEdgeSuccessHyps g g' src dst srcLabel dstLabel) :
     ∀ n l, Interface.nodeLabel? g' n = some l → Interface.nodeOfLabel? g' l = some n := by
+  -- TODO: complete HashMap insert/get? case analysis to show reverse-map consistency is preserved.
+  -- Key idea:
+  --   * if n = src or n = dst, both forward/reverse lookups are fixed by the two inserts;
+  --   * otherwise, both lookups reduce to g and follow from hWF.nodeLabelRoundTrip.
+  -- This remains the only non-acyclic “addEdge does not corrupt labels” obligation.
   sorry
 
 -- ── acyclic for addEdge ───────────────────────────────────────────────────────
