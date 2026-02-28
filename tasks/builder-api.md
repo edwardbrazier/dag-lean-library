@@ -77,9 +77,16 @@ The `⟨..., ..., ...⟩` anonymous constructor notation doesn't work for `List.
 
 ---
 
+## Progress Update
+
+- Completed the remaining Step 1 work by proving `mem_eraseDups_of_mem` locally in `Builder.lean`.
+- `simpleAdjacency_always` now uses the local `nodup_eraseDups` proof, so Step 2 is complete.
+- `empty_wellFormed` is in the expected shape (`descendantClosure_empty` by `rfl` + `show`/`simp` style goals), so Step 3 is complete.
+- The next implementation target is Step 4 (`addEdge_some_noIsolatedNodes`).
+
 ## Plan Going Forward
 
-### Step 1 — Prove the three missing list lemmas locally (private)
+### Step 1 — Prove the three missing list lemmas locally (private) ✅ Done
 ```lean
 private theorem mem_of_mem_eraseDups [BEq α] [LawfulBEq α] :
     ∀ (l : List α) (x : α), x ∈ l.eraseDups → x ∈ l
@@ -94,15 +101,15 @@ private theorem nodup_eraseDups [BEq α] [LawfulBEq α] :
 -- induction using eraseDups_cons, mem_of_mem_eraseDups, mem_filter
 ```
 
-### Step 2 — Fix `simpleAdjacency_always`
+### Step 2 — Fix `simpleAdjacency_always` ✅ Done
 Use `nodup_eraseDups` directly.
 
-### Step 3 — Fix `empty_wellFormed`
+### Step 3 — Fix `empty_wellFormed` ✅ Done
 - Use `rfl` for `descendantClosure empty n = []`
 - Use `show` to restate goals in terms of concrete functions rather than Interface methods
 - The five invariants all hold vacuously for the empty graph
 
-### Step 4 — Fix `noIsolatedNodes` proof for `addEdge`
+### Step 4 — Fix `noIsolatedNodes` proof for `addEdge` ⏳ Next
 Use `List.mem_filterMap.mpr`, `mem_eraseDups_of_mem`, and `List.ne_nil_of_mem` (which does exist).
 
 ### Step 5 — Add `sorry` for `nodeLabelRoundTrip` and `acyclic`
