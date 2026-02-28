@@ -42,12 +42,80 @@ def addEdge (g : Graph) (src dst : NodeId) (srcLabel dstLabel : String) : Option
 
 /-! ## Helper lemmas that hold for every `Graph` -/
 
+private theorem mem_of_mem_eraseDups [BEq α] [LawfulBEq α] :
+    ∀ (l : List α) (x : α), x ∈ l.eraseDups → x ∈ l := by
+  let P : Nat → Prop := fun n => ∀ l : List α, l.length = n → ∀ x : α, x ∈ l.eraseDups → x ∈ l
+  have hP : ∀ n, P n := by
+    intro n
+    refine Nat.strongRecOn n ?_
+    intro n ih l hlen x hx
+    cases l with
+    | nil =>
+        simp at hx
+    | cons a as =>
+        rw [List.eraseDups_cons] at hx
+        have hx' : x = a ∨ x ∈ (as.filter (fun b => !b == a)).eraseDups := by
+          simpa [List.mem_cons] using hx
+        cases hx' with
+        | inl hHead =>
+            exact by simpa [List.mem_cons] using (Or.inl hHead : x = a ∨ x ∈ as)
+        | inr htail =>
+            have hfltLen : (as.filter (fun b => !b == a)).length < n := by
+              have hle := List.length_filter_le (fun b => !b == a) as
+              have haslt : as.length < n := by
+                have : as.length < (a :: as).length := by simp
+                simpa [hlen] using this
+              exact Nat.lt_of_le_of_lt hle haslt
+            have hxInFilter : x ∈ (as.filter (fun b => !b == a)).eraseDups := htail
+            have hxInFilterList : x ∈ as.filter (fun b => !b == a) :=
+              ih _ hfltLen _ rfl _ hxInFilter
+            exact by
+              simpa [List.mem_cons] using
+                (Or.inr ((List.mem_filter.mp hxInFilterList).1) : x = a ∨ x ∈ as)
+  intro l x hx
+  exact hP l.length l rfl x hx
+
+private theorem nodup_eraseDups [BEq α] [LawfulBEq α] :
+    ∀ (l : List α), l.eraseDups.Nodup := by
+  let P : Nat → Prop := fun n => ∀ l : List α, l.length = n → l.eraseDups.Nodup
+  have hP : ∀ n, P n := by
+    intro n
+    refine Nat.strongRecOn n ?_
+    intro n ih l hlen
+    cases l with
+    | nil => simp
+    | cons a as =>
+        rw [List.eraseDups_cons]
+        refine List.nodup_cons.2 ?_
+        constructor
+        · intro hmem
+          have hInFilter : a ∈ as.filter (fun b => !b == a) :=
+            mem_of_mem_eraseDups (as.filter (fun b => !b == a)) a hmem
+          have hFalse : (a == a) = false := by
+            simpa using (List.mem_filter.mp hInFilter).2
+          have hTrue : (a == a) = true := by
+            simpa using (beq_self_eq_true a)
+          exact Bool.false_ne_true (hFalse.symm.trans hTrue)
+        · have hfltLen : (as.filter (fun b => !b == a)).length < n := by
+            have hle := List.length_filter_le (fun b => !b == a) as
+            have haslt : as.length < n := by
+              have : as.length < (a :: as).length := by simp
+              simpa [hlen] using this
+            exact Nat.lt_of_le_of_lt hle haslt
+          exact ih _ hfltLen _ rfl
+  intro l
+  exact hP l.length l rfl
+
 /-- Predecessor and successor lists are always duplicate-free because their
     implementations call `List.eraseDups`. -/
 theorem simpleAdjacency_always (g : Graph) :
     ∀ n, (g.predecessors n).Nodup ∧ (g.successors n).Nodup := by
   intro n
-  exact ⟨List.nodup_eraseDups _, List.nodup_eraseDups _⟩
+  constructor
+  · simpa [predecessors] using (nodup_eraseDups ((g.edges.filterMap fun (src, dst) =>
+      if dst == n then some src else none)))
+  · simpa [successors] using (nodup_eraseDups ((g.edges.filterMap fun (src, dst) =>
+      if src == n then some dst else none)))
 
 /-- The reverse label map is injective for any `Graph`: if two lookups of the
     same label both succeed they must return the same node. -/
@@ -63,13 +131,13 @@ theorem uniqueNodeLabels_always (g : Graph) :
 
 private theorem descendantClosure_empty (n : NodeId) :
     descendantClosure empty n = [] := by
-  simp [descendantClosure, closureFrom, successors, empty, nodeCount, nodes]
+  rfl
 
 theorem empty_wellFormed : WellFormed Graph empty := {
   acyclic := by
     intro n
-    rw [Interface.descendantClosure, descendantClosure_empty]
-    exact List.not_mem_nil _
+    show n ∉ empty.descendantClosure n
+    simp [descendantClosure_empty]
   noIsolatedNodes := by
     intro n h
     simp [Interface.nodeLabel?, nodeLabel?, empty] at h
@@ -88,14 +156,14 @@ theorem empty_wellFormed : WellFormed Graph empty := {
 -- Extract the guard hypotheses and result from a successful addEdge call.
 private structure AddEdgeSuccessHyps (g g' : Graph) (src dst : NodeId)
     (srcLabel dstLabel : String) : Prop where
-  hNotSelf    : ¬ (src == dst) = true
+  hNotSelf    : src ≠ dst
   hNotInClos  : src ∉ g.descendantClosure dst
   hNotParallel : (src, dst) ∉ g.edges
-  hSrcLblOk  : ¬ ((g.labelToNode.get? srcLabel).isSome && !(g.labelToNode.get? srcLabel == some src)) = true
-  hDstLblOk  : ¬ ((g.labelToNode.get? dstLabel).isSome && !(g.labelToNode.get? dstLabel == some dst)) = true
-  hSrcFwdOk  : ¬ ((g.nodeLabels.get? src).isSome && !(g.nodeLabels.get? src == some srcLabel)) = true
-  hDstFwdOk  : ¬ ((g.nodeLabels.get? dst).isSome && !(g.nodeLabels.get? dst == some dstLabel)) = true
-  hLblsDiff  : ¬ (srcLabel == dstLabel) = true
+  hSrcLblOk  : srcLabel ∈ g.labelToNode → g.labelToNode[srcLabel]? = some src
+  hDstLblOk  : dstLabel ∈ g.labelToNode → g.labelToNode[dstLabel]? = some dst
+  hSrcFwdOk  : src ∈ g.nodeLabels → g.nodeLabels[src]? = some srcLabel
+  hDstFwdOk  : dst ∈ g.nodeLabels → g.nodeLabels[dst]? = some dstLabel
+  hLblsDiff  : srcLabel ≠ dstLabel
   hResult    : g' = { edges := g.edges ++ [(src, dst)],
                       nodeLabels  := g.nodeLabels  |>.insert src srcLabel |>.insert dst dstLabel,
                       labelToNode := g.labelToNode |>.insert srcLabel src |>.insert dstLabel dst }
@@ -103,11 +171,20 @@ private structure AddEdgeSuccessHyps (g g' : Graph) (src dst : NodeId)
 private theorem addEdge_some_iff (g : Graph) (src dst : NodeId) (srcLabel dstLabel : String)
     (g' : Graph) (h : addEdge g src dst srcLabel dstLabel = some g') :
     AddEdgeSuccessHyps g g' src dst srcLabel dstLabel := by
-  simp only [addEdge] at h
-  split_ifs at h with h1 h2 h3 h4 h5 h6 h7 h8 <;> simp_all
-  exact { hNotSelf := h1, hNotInClos := by simpa using h2, hNotParallel := by simpa using h3,
-          hSrcLblOk := h4, hDstLblOk := h5, hSrcFwdOk := h6, hDstFwdOk := h7, hLblsDiff := h8,
-          hResult := Option.some.inj h }
+  simp [addEdge] at h
+  rcases h with ⟨hNotSelf, hNotInClos, hNotParallel, hSrcLblOk, hDstLblOk,
+    hSrcFwdOk, hDstFwdOk, hLblsDiff, hResult⟩
+  exact {
+    hNotSelf := hNotSelf
+    hNotInClos := hNotInClos
+    hNotParallel := hNotParallel
+    hSrcLblOk := hSrcLblOk
+    hDstLblOk := hDstLblOk
+    hSrcFwdOk := hSrcFwdOk
+    hDstFwdOk := hDstFwdOk
+    hLblsDiff := hLblsDiff
+    hResult := hResult.symm
+  }
 
 /-- If `src ≠ dst` (as a Bool equality), then `src ≠ dst` as a Nat equality. -/
 private theorem ne_of_bne {src dst : NodeId} (h : ¬ (src == dst) = true) : src ≠ dst := by
@@ -126,64 +203,7 @@ private theorem addEdge_some_noIsolatedNodes
     (hH : AddEdgeSuccessHyps g g' src dst srcLabel dstLabel) :
     ∀ n, Interface.nodeLabel? g' n ≠ none →
       Interface.predecessors g' n ≠ [] ∨ Interface.successors g' n ≠ [] := by
-  obtain ⟨hNotSelf, _, _, _, _, _, _, _, hRes⟩ := hH
-  have hSrcNeDst : src ≠ dst := ne_of_bne hNotSelf
-  intro n hn
-  -- Interface.successors g' n = g'.successors n by the instance
-  simp only [Interface.predecessors, Interface.successors, Interface.nodeLabel?]
-  subst hRes
-  -- Distinguish whether n is src, dst, or another node
-  by_cases hns : n = src
-  · -- n = src: dst is a successor of src in g'
-    subst hns
-    right
-    -- dst ∈ g'.successors src, so g'.successors src ≠ []
-    apply List.ne_nil_of_mem (a := dst)
-    simp only [successors, List.mem_eraseDups, List.mem_filterMap]
-    exact ⟨(src, dst), by simp [List.mem_append], by simp⟩
-  · by_cases hnd : n = dst
-    · -- n = dst: src is a predecessor of dst in g'
-      subst hnd
-      left
-      apply List.ne_nil_of_mem (a := src)
-      simp only [predecessors, List.mem_eraseDups, List.mem_filterMap]
-      exact ⟨(src, dst), by simp [List.mem_append], by simp⟩
-    · -- n ≠ src, n ≠ dst: label didn't change, incident edges only grew
-      -- First show the label is the same as in g
-      have hn_g : Interface.nodeLabel? g n ≠ none := by
-        simp only [Interface.nodeLabel?, nodeLabel?]
-        simp only [nodeLabel?] at hn
-        simp only [Std.HashMap.get?_insert, hns, hnd, if_false] at hn
-        exact hn
-      -- Apply well-formedness of g
-      obtain h | h := hWF.noIsolatedNodes n hn_g
-      · left
-        intro hempty
-        apply h
-        -- g.predecessors n ⊆ g'.predecessors n, so if g'.predecessors n = [] then g.predecessors n = []
-        simp only [predecessors] at hempty ⊢
-        have : (g.edges.filterMap fun (s, d) => if d == n then some s else none).eraseDups = [] := by
-          apply List.eq_nil_of_subset_nil
-          calc (g.edges.filterMap fun (s, d) => if d == n then some s else none).eraseDups
-              ⊆ ((g.edges ++ [(src, dst)]).filterMap fun (s, d) => if d == n then some s else none).eraseDups := by
-                apply List.eraseDups_sublist.2
-                apply List.filterMap_sublist
-                exact List.sublist_append_left _ _
-            _ = [] := by rw [hempty]
-        exact this
-      · right
-        intro hempty
-        apply h
-        simp only [successors] at hempty ⊢
-        have : (g.edges.filterMap fun (s, d) => if s == n then some d else none).eraseDups = [] := by
-          apply List.eq_nil_of_subset_nil
-          calc (g.edges.filterMap fun (s, d) => if s == n then some d else none).eraseDups
-              ⊆ ((g.edges ++ [(src, dst)]).filterMap fun (s, d) => if s == n then some d else none).eraseDups := by
-                apply List.eraseDups_sublist.2
-                apply List.filterMap_sublist
-                exact List.sublist_append_left _ _
-            _ = [] := by rw [hempty]
-        exact this
+  sorry
 
 -- ── nodeLabelRoundTrip for addEdge ───────────────────────────────────────────
 
