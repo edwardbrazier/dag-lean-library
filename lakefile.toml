@@ -8,3 +8,8 @@ name = "DagLeanLibrary"
 [[lean_exe]]
 name = "dagleanlibrary"
 root = "Main"
+
+[[lean_exe]]
+name = "builder-examples"
+# module corresponding to the file path, not the namespace within
+root = "DagLeanLibrary.SpecialDAG.Builder.Examples"

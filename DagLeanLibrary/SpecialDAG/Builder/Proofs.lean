@@ -57,11 +57,11 @@ private theorem mem_eraseDups_of_mem [BEq α] [LawfulBEq α] :
           simpa [List.mem_cons] using hx
         cases hx' with
         | inl hHead =>
-            simpa [hHead]
+            simp [hHead]
         | inr hTail =>
             by_cases hEq : x == a
             · have hxa : x = a := LawfulBEq.eq_of_beq hEq
-              simpa [hxa]
+              simp [hxa]
             · right
               have hxInFilter : x ∈ as.filter (fun b => !b == a) := by
                 exact List.mem_filter.mpr ⟨hTail, by simpa [Bool.not_eq_true] using hEq⟩
@@ -94,6 +94,7 @@ private theorem nodup_eraseDups [BEq α] [LawfulBEq α] :
           have hFalse : (a == a) = false := by
             simpa using (List.mem_filter.mp hInFilter).2
           have hTrue : (a == a) = true := by
+            set_option linter.unnecessarySimpa false in
             simpa using (beq_self_eq_true a)
           exact Bool.false_ne_true (hFalse.symm.trans hTrue)
         · have hfltLen : (as.filter (fun b => !b == a)).length < n := by

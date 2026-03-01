@@ -26,9 +26,12 @@ def builtSuccessfullyWellFormed : Option Bool :=
 #guard builtSuccessfully.isSome
 #guard builtSuccessfullyWellFormed = some true
 
-#eval addEdgeAttemptResults
-#eval builtSuccessfullyWellFormed
+def main : IO Unit := do
+  IO.println s!"Results from attempting to add edges: {addEdgeAttemptResults}"
+  IO.println s!"Built successfully well-formed: {builtSuccessfullyWellFormed}"
 
 end Graph
 end SpecialDAG
 end DagLeanLibrary
+
+def main : IO Unit := DagLeanLibrary.SpecialDAG.Graph.main
