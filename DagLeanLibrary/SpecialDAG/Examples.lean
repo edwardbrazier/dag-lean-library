@@ -76,6 +76,16 @@ def brokenLabelMap : Graph :=
 #guard hasParallelEdges.checkWellFormed = false
 #guard brokenLabelMap.checkWellFormed = false
 
+def wellFormedChecks : List (String × Bool) :=
+  [ ("demo", demo.checkWellFormed)
+  , ("cyclic", cyclic.checkWellFormed)
+  , ("hasIsolatedNode", hasIsolatedNode.checkWellFormed)
+  , ("hasParallelEdges", hasParallelEdges.checkWellFormed)
+  , ("brokenLabelMap", brokenLabelMap.checkWellFormed)
+  ]
+
+#eval wellFormedChecks
+
 end Graph
 end SpecialDAG
 end DagLeanLibrary
