@@ -38,16 +38,33 @@ def addEdge (g : Graph) (src dst : NodeId) (srcLabel dstLabel : String) : Option
 
 /-- Safely delete a directed edge `src → dst`.
 
-    Returns `none` if the edge does not exist or deleting it would violate
-    any `WellFormed` invariant. -/
+    Returns `none` if the edge does not exist.
+
+    On success, this function removes the edge and then prunes any orphaned
+    nodes (nodes with no incoming and no outgoing edges), including deleting
+    their labels from both maps. -/
 def deleteEdge (g : Graph) (src dst : NodeId) : Option Graph :=
   if !decide ((src, dst) ∈ g.edges) then none
   else
-    let g' : Graph :=
-      { edges := g.edges.erase (src, dst)
-      , nodeLabels := g.nodeLabels
-      , labelToNode := g.labelToNode }
-    if g'.checkWellFormed then some g' else none
+    let edges' := g.edges.erase (src, dst)
+    let nodeHasIncidentEdge (n : NodeId) : Bool :=
+      edges'.any (fun (u, v) => u == n || v == n)
+    let nodeLabels' : Std.HashMap NodeId String :=
+      g.nodeLabels.toList.foldl
+        (fun acc (entry : NodeId × String) =>
+          let (n, lbl) := entry
+          if nodeHasIncidentEdge n then acc.insert n lbl else acc)
+        ∅
+    let labelToNode' : Std.HashMap String NodeId :=
+      nodeLabels'.toList.foldl
+        (fun acc (entry : NodeId × String) =>
+          let (n, lbl) := entry
+          acc.insert lbl n)
+        ∅
+    some
+      { edges := edges'
+      , nodeLabels := nodeLabels'
+      , labelToNode := labelToNode' }
 
 /-- Safely delete node `n` and all incident edges.
 
