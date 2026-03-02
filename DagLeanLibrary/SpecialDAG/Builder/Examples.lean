@@ -1,4 +1,4 @@
-import DagLeanLibrary.SpecialDAG.Builder.Proofs
+import DagLeanLibrary.SpecialDAG.Builder.Proofs_addEdge
 
 namespace DagLeanLibrary
 namespace SpecialDAG

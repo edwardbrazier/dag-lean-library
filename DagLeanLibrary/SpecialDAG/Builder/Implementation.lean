@@ -36,9 +36,38 @@ def addEdge (g : Graph) (src dst : NodeId) (srcLabel dstLabel : String) : Option
     , nodeLabels := g.nodeLabels  |>.insert src srcLabel |>.insert dst dstLabel
     , labelToNode := g.labelToNode |>.insert srcLabel src |>.insert dstLabel dst }
 
+/-- Safely delete a directed edge `src → dst`.
+
+    Returns `none` if the edge does not exist or deleting it would violate
+    any `WellFormed` invariant. -/
+def deleteEdge (g : Graph) (src dst : NodeId) : Option Graph :=
+  if !decide ((src, dst) ∈ g.edges) then none
+  else
+    let g' : Graph :=
+      { edges := g.edges.erase (src, dst)
+      , nodeLabels := g.nodeLabels
+      , labelToNode := g.labelToNode }
+    if g'.checkWellFormed then some g' else none
+
+/-- Safely delete node `n` and all incident edges.
+
+    Returns `none` if the node does not exist or deleting it would violate
+    any `WellFormed` invariant. -/
+def deleteNode (g : Graph) (n : NodeId) : Option Graph :=
+  match g.nodeLabels.get? n with
+  | none => none
+  | some lbl =>
+      let g' : Graph :=
+        { edges := g.edges.filter (fun (src, dst) => src != n && dst != n)
+        , nodeLabels := g.nodeLabels.erase n
+        , labelToNode := g.labelToNode.erase lbl }
+      if g'.checkWellFormed then some g' else none
+
 instance : BuilderInterface Graph where
   empty := empty
   addEdge := addEdge
+  deleteEdge := deleteEdge
+  deleteNode := deleteNode
 
 end Graph
 end SpecialDAG
