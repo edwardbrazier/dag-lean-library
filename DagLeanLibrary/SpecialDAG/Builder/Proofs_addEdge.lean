@@ -1,4 +1,5 @@
 import DagLeanLibrary.SpecialDAG.Builder.Implementation
+import DagLeanLibrary.SpecialDAG.Builder.Spec
 import DagLeanLibrary.SpecialDAG.Proofs
 import Std.Data.HashMap.Lemmas
 
@@ -167,7 +168,9 @@ private theorem descendantClosure_empty (n : NodeId) :
     descendantClosure empty n = [] := by
   rfl
 
-theorem empty_wellFormed : WellFormed Graph empty := {
+theorem empty_wellFormed_proof : empty_wellFormed := by
+  unfold empty_wellFormed
+  exact {
   acyclic := by
     intro n
     show n ∉ empty.descendantClosure n
@@ -454,12 +457,8 @@ private theorem addEdge_some_acyclic
 /-! ## Master theorem -/
 
 /-- Any graph produced by `addEdge` from a well-formed graph is itself well-formed. -/
-theorem addEdge_some_wellFormed
-    (g : Graph) (src dst : NodeId) (srcLabel dstLabel : String)
-    (hWF : WellFormed Graph g)
-    (g' : Graph)
-    (h : addEdge g src dst srcLabel dstLabel = some g') :
-    WellFormed Graph g' := by
+theorem addEdge_some_wellFormed_proof : addEdge_some_wellFormed := by
+  intro g src dst srcLabel dstLabel hWF g' h
   obtain hH := addEdge_some_iff g src dst srcLabel dstLabel g' h
   exact {
     acyclic          := addEdge_some_acyclic g src dst srcLabel dstLabel hWF g' hH

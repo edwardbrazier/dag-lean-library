@@ -1,4 +1,5 @@
 import DagLeanLibrary.SpecialDAG.Builder.Implementation
+import DagLeanLibrary.SpecialDAG.Builder.Spec
 import DagLeanLibrary.SpecialDAG.Builder.Proofs_addEdge
 
 namespace DagLeanLibrary
@@ -285,12 +286,8 @@ private theorem deleteEdge_some_nodeLabelRoundTrip
 
 /-- Any graph produced by successful `deleteEdge` from a well-formed graph
 is itself well-formed. -/
-theorem deleteEdge_some_wellFormed
-    (g : Graph) (src dst : NodeId)
-    (hWF : WellFormed Graph g)
-    (g' : Graph)
-    (h : deleteEdge g src dst = some g') :
-    WellFormed Graph g' := by
+theorem deleteEdge_some_wellFormed_proof : deleteEdge_some_wellFormed := by
+  intro g src dst hWF g' h
   refine
     { acyclic := deleteEdge_some_acyclic g src dst hWF g' h
       noIsolatedNodes := deleteEdge_some_noIsolatedNodes g src dst hWF g' h

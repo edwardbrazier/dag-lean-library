@@ -1,7 +1,7 @@
 import DagLeanLibrary.SpecialDAG.Builder.Interface
 import DagLeanLibrary.SpecialDAG.Builder.Implementation
+import DagLeanLibrary.SpecialDAG.Builder.Spec
 import DagLeanLibrary.SpecialDAG.Builder.Proofs_addEdge
 import DagLeanLibrary.SpecialDAG.Builder.Proofs_deleteEdge
 import DagLeanLibrary.SpecialDAG.Builder.Proofs_deleteNode
 import DagLeanLibrary.SpecialDAG.Builder.Examples
-

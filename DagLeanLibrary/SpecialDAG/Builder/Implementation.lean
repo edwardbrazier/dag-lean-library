@@ -65,17 +65,27 @@ def deleteEdge (g : Graph) (src dst : NodeId) : Option Graph :=
 
 /-- Safely delete node `n` and all incident edges.
 
-    Returns `none` if the node does not exist or deleting it would violate
-    any `WellFormed` invariant. -/
+    Returns `none` if the node does not exist.
+
+    On success, this function removes all incident edges of `n`, then prunes
+    orphaned nodes (nodes with no incoming and no outgoing edges), and rebuilds
+    both label maps from the remaining incident nodes. -/
 def deleteNode (g : Graph) (n : NodeId) : Option Graph :=
-  match g.nodeLabels.get? n with
-  | none => none
-  | some lbl =>
-      let g' : Graph :=
-        { edges := g.edges.filter (fun (src, dst) => src != n && dst != n)
-        , nodeLabels := g.nodeLabels.erase n
-        , labelToNode := g.labelToNode.erase lbl }
-      if g'.checkWellFormed then some g' else none
+  if (g.nodeLabels.get? n).isNone then none
+  else
+    let edges' := g.edges.filter (fun (src, dst) => src != n && dst != n)
+    let nodeHasIncidentEdge (k : NodeId) : Bool :=
+      edges'.any (fun (u, v) => u == k || v == k)
+    let nodeLabels' : Std.HashMap NodeId String :=
+      g.nodeLabels.filter (fun k _ => nodeHasIncidentEdge k)
+    let labelToNode' : Std.HashMap String NodeId :=
+      Std.HashMap.ofList (nodeLabels'.toList.map (fun (k, lbl) => (lbl, k)))
+    let g' : Graph :=
+      { edges := edges'
+      , nodeLabels := nodeLabels'
+      , labelToNode := labelToNode' }
+    let sourceNodes := (g'.edges.map Prod.fst).eraseDups
+    if sourceNodes.all (fun k => decide (k ∉ g'.descendantClosure k)) then some g' else none
 
 instance : BuilderInterface Graph where
   empty := empty
