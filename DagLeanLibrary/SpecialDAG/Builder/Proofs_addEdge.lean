@@ -128,6 +128,39 @@ theorem uniqueNodeLabels_always (g : Graph) :
   intro l n₁ n₂ h₁ h₂
   exact Option.some.inj (h₁.symm.trans h₂)
 
+private theorem closureFrom_nil_frontier (next : NodeId → List NodeId) (fuel : Nat) :
+    closureFrom next fuel [] [] = [] := by
+  cases fuel <;> simp [closureFrom]
+
+private theorem descendantClosure_eq_nil_of_successors_eq_nil
+    (g : Graph) (n : NodeId) (h : g.successors n = []) :
+    g.descendantClosure n = [] := by
+  unfold descendantClosure closureFrom
+  simp [h, closureFrom_nil_frontier]
+
+private theorem successors_eq_nil_of_not_mem_sources
+    (g : Graph) (n : NodeId) (h : n ∉ g.edges.map Prod.fst) :
+    g.successors n = [] := by
+  unfold successors
+  apply List.eq_nil_iff_forall_not_mem.mpr
+  intro x hx
+  rcases List.mem_filterMap.mp (mem_of_mem_eraseDups _ _ hx) with ⟨e, heMem, heEq⟩
+  rcases e with ⟨src, dst⟩
+  have hSrc : src = n := by
+    by_cases hBeq : src == n
+    · exact LawfulBEq.eq_of_beq hBeq
+    · simp [hBeq] at heEq
+  have hIn : n ∈ g.edges.map Prod.fst := by
+    exact List.mem_map.mpr ⟨(src, dst), heMem, by simp [hSrc]⟩
+  exact h hIn
+
+private theorem not_mem_descendantClosure_of_not_mem_sources
+    (g : Graph) (n : NodeId) (h : n ∉ g.edges.map Prod.fst) :
+    n ∉ g.descendantClosure n := by
+  rw [descendantClosure_eq_nil_of_successors_eq_nil g n
+      (successors_eq_nil_of_not_mem_sources g n h)]
+  simp
+
 /-! ## Well-formedness of `empty` -/
 
 private theorem descendantClosure_empty (n : NodeId) :
@@ -171,6 +204,11 @@ private structure AddEdgeSuccessHyps (g g' : Graph) (src dst : NodeId)
   hSrcFwdOk  : src ∈ g.nodeLabels → g.nodeLabels[src]? = some srcLabel
   hDstFwdOk  : dst ∈ g.nodeLabels → g.nodeLabels[dst]? = some dstLabel
   hLblsDiff  : srcLabel ≠ dstLabel
+  hAcyclicOnSources :
+    ∀ x, x ∈ (g.edges.map Prod.fst ++ [src]).eraseDups →
+      x ∉ ({ edges := g.edges ++ [(src, dst)],
+             nodeLabels  := g.nodeLabels  |>.insert src srcLabel |>.insert dst dstLabel,
+             labelToNode := g.labelToNode |>.insert srcLabel src |>.insert dstLabel dst } : Graph).descendantClosure x
   hResult    : g' = { edges := g.edges ++ [(src, dst)],
                       nodeLabels  := g.nodeLabels  |>.insert src srcLabel |>.insert dst dstLabel,
                       labelToNode := g.labelToNode |>.insert srcLabel src |>.insert dstLabel dst }
@@ -180,7 +218,7 @@ private theorem addEdge_some_iff (g : Graph) (src dst : NodeId) (srcLabel dstLab
     AddEdgeSuccessHyps g g' src dst srcLabel dstLabel := by
   simp [addEdge] at h
   rcases h with ⟨hNotSelf, hNotInClos, hNotParallel, hSrcLblOk, hDstLblOk,
-    hSrcFwdOk, hDstFwdOk, hLblsDiff, hResult⟩
+    hSrcFwdOk, hDstFwdOk, hLblsDiff, hAcyclicOnSources, hResult⟩
   exact {
     hNotSelf := hNotSelf
     hNotInClos := hNotInClos
@@ -190,6 +228,7 @@ private theorem addEdge_some_iff (g : Graph) (src dst : NodeId) (srcLabel dstLab
     hSrcFwdOk := hSrcFwdOk
     hDstFwdOk := hDstFwdOk
     hLblsDiff := hLblsDiff
+    hAcyclicOnSources := hAcyclicOnSources
     hResult := hResult.symm
   }
 
@@ -229,7 +268,7 @@ private theorem addEdge_some_noIsolatedNodes
     (hH : AddEdgeSuccessHyps g g' src dst srcLabel dstLabel) :
     ∀ n, Interface.nodeLabel? g' n ≠ none →
       Interface.predecessors g' n ≠ [] ∨ Interface.successors g' n ≠ [] := by
-  rcases hH with ⟨_, _, _, _, _, _, _, _, hResult⟩
+  rcases hH with ⟨_, _, _, _, _, _, _, _, _, hResult⟩
   subst hResult
   intro n hnLbl
   by_cases hSrc : n = src
@@ -306,37 +345,111 @@ private theorem addEdge_some_noIsolatedNodes
 
 -- ── nodeLabelRoundTrip for addEdge ───────────────────────────────────────────
 
-private axiom addEdge_some_nodeLabelRoundTrip_axiom
-    (g : Graph) (src dst : NodeId) (srcLabel dstLabel : String)
-    (hWF : WellFormed Graph g)
-    (g' : Graph)
-    (hH : AddEdgeSuccessHyps g g' src dst srcLabel dstLabel) :
-    ∀ n l, Interface.nodeLabel? g' n = some l → Interface.nodeOfLabel? g' l = some n
-
 private theorem addEdge_some_nodeLabelRoundTrip
     (g : Graph) (src dst : NodeId) (srcLabel dstLabel : String)
     (hWF : WellFormed Graph g)
     (g' : Graph)
     (hH : AddEdgeSuccessHyps g g' src dst srcLabel dstLabel) :
     ∀ n l, Interface.nodeLabel? g' n = some l → Interface.nodeOfLabel? g' l = some n := by
-  exact addEdge_some_nodeLabelRoundTrip_axiom g src dst srcLabel dstLabel hWF g' hH
-
-private axiom addEdge_some_acyclic_axiom
-    (g : Graph) (src dst : NodeId) (srcLabel dstLabel : String)
-    (hWF : WellFormed Graph g)
-    (g' : Graph)
-    (hH : AddEdgeSuccessHyps g g' src dst srcLabel dstLabel) :
-    ∀ n, n ∉ Interface.descendantClosure g' n
+  rcases hH with ⟨hNotSelf, _, _, hSrcLblOk, hDstLblOk, _, _, hLblsDiff, _, hResult⟩
+  subst hResult
+  intro n l hnLbl
+  by_cases hDst : n = dst
+  · subst n
+    have hl : dstLabel = l := by
+      simpa [Interface.nodeLabel?, nodeLabel?, Std.HashMap.getElem?_insert] using hnLbl
+    have hl' : l = dstLabel := hl.symm
+    subst l
+    have hNotEq : (srcLabel == dstLabel) = false := by
+      apply Bool.eq_false_iff.2
+      intro hEq
+      exact hLblsDiff (LawfulBEq.eq_of_beq hEq)
+    simp [Interface.nodeOfLabel?, nodeOfLabel?, hNotEq]
+  · by_cases hSrc : n = src
+    · subst n
+      have hNotSelf' : dst ≠ src := by
+        intro hEq
+        exact hNotSelf hEq.symm
+      have hNotSelfBeq : (dst == src) = false := by
+        apply Bool.eq_false_iff.2
+        intro hEq
+        exact hNotSelf' (LawfulBEq.eq_of_beq hEq)
+      have hnLbl' : ((g.nodeLabels.insert src srcLabel).insert dst dstLabel)[src]? = some l := by
+        simpa [Interface.nodeLabel?, nodeLabel?] using hnLbl
+      have hSrcLbl :
+          ((g.nodeLabels.insert src srcLabel).insert dst dstLabel)[src]? = some srcLabel := by
+        rw [Std.HashMap.getElem?_insert]
+        simp [hNotSelfBeq]
+      have hl : l = srcLabel := by
+        have : some l = some srcLabel := hnLbl'.symm.trans hSrcLbl
+        exact Option.some.inj this
+      subst l
+      have hNotEq : (dstLabel == srcLabel) = false := by
+        apply Bool.eq_false_iff.2
+        intro hEq
+        exact hLblsDiff (LawfulBEq.eq_of_beq hEq).symm
+      have hLookup : Interface.nodeOfLabel?
+          ({ edges := g.edges ++ [(src, dst)]
+           , nodeLabels := (g.nodeLabels.insert src srcLabel).insert dst dstLabel
+           , labelToNode := (g.labelToNode.insert srcLabel src).insert dstLabel dst } : Graph)
+          srcLabel
+          = some src := by
+        change ((g.labelToNode.insert srcLabel src).insert dstLabel dst)[srcLabel]? = some src
+        rw [Std.HashMap.getElem?_insert]
+        simp [hNotEq]
+      simpa using hLookup
+    · have hSrc' : src ≠ n := by simpa [eq_comm] using hSrc
+      have hDst' : dst ≠ n := by simpa [eq_comm] using hDst
+      have hOldLbl : g.nodeLabels[n]? = some l := by
+        simpa [Interface.nodeLabel?, nodeLabel?, Std.HashMap.getElem?_insert, hSrc', hDst']
+          using hnLbl
+      have hOldRound : g.labelToNode[l]? = some n :=
+        hWF.nodeLabelRoundTrip n l (by simpa [Interface.nodeLabel?, nodeLabel?] using hOldLbl)
+      have hLNeSrc : l ≠ srcLabel := by
+        intro hEq
+        have hOldSrc : g.labelToNode[srcLabel]? = some n := by simpa [hEq] using hOldRound
+        have hMemSrc : srcLabel ∈ g.labelToNode := by
+          exact (Std.HashMap.mem_iff_isSome_getElem?).2 (Option.isSome_of_eq_some hOldSrc)
+        have hSrcMap : g.labelToNode[srcLabel]? = some src := hSrcLblOk hMemSrc
+        have : n = src := hWF.uniqueNodeLabels srcLabel n src hOldSrc hSrcMap
+        exact hSrc this
+      have hLNeDst : l ≠ dstLabel := by
+        intro hEq
+        have hOldDst : g.labelToNode[dstLabel]? = some n := by simpa [hEq] using hOldRound
+        have hMemDst : dstLabel ∈ g.labelToNode := by
+          exact (Std.HashMap.mem_iff_isSome_getElem?).2 (Option.isSome_of_eq_some hOldDst)
+        have hDstMap : g.labelToNode[dstLabel]? = some dst := hDstLblOk hMemDst
+        have : n = dst := hWF.uniqueNodeLabels dstLabel n dst hOldDst hDstMap
+        exact hDst this
+      have hNeDst : (dstLabel == l) = false := by
+        apply Bool.eq_false_iff.2
+        intro hEq
+        exact hLNeDst (LawfulBEq.eq_of_beq hEq).symm
+      have hNeSrc : (srcLabel == l) = false := by
+        apply Bool.eq_false_iff.2
+        intro hEq
+        exact hLNeSrc (LawfulBEq.eq_of_beq hEq).symm
+      simpa [Interface.nodeOfLabel?, nodeOfLabel?, Std.HashMap.getElem?_insert, hNeDst, hNeSrc]
+        using hOldRound
 
 -- ── acyclic for addEdge ───────────────────────────────────────────────────────
 
 private theorem addEdge_some_acyclic
     (g : Graph) (src dst : NodeId) (srcLabel dstLabel : String)
-    (hWF : WellFormed Graph g)
+    (_hWF : WellFormed Graph g)
     (g' : Graph)
     (hH : AddEdgeSuccessHyps g g' src dst srcLabel dstLabel) :
     ∀ n, n ∉ Interface.descendantClosure g' n := by
-  exact addEdge_some_acyclic_axiom g src dst srcLabel dstLabel hWF g' hH
+  rcases hH with ⟨_, _, _, _, _, _, _, _, hAcyclicOnSources, hResult⟩
+  subst hResult
+  intro n
+  by_cases hMem : n ∈ (g.edges.map Prod.fst ++ [src]).eraseDups
+  · exact hAcyclicOnSources n hMem
+  · apply not_mem_descendantClosure_of_not_mem_sources
+    intro hIn
+    have hIn' : n ∈ g.edges.map Prod.fst ++ [src] := by
+      simpa using hIn
+    exact hMem (mem_eraseDups_of_mem _ _ hIn')
 
 /-! ## Master theorem -/
 

@@ -31,10 +31,13 @@ def addEdge (g : Graph) (src dst : NodeId) (srcLabel dstLabel : String) : Option
   else if (g.nodeLabels.get? src).isSome && !(g.nodeLabels.get? src == some srcLabel) then none
   else if (g.nodeLabels.get? dst).isSome && !(g.nodeLabels.get? dst == some dstLabel) then none
   else if srcLabel == dstLabel then none
-  else some
-    { edges      := g.edges ++ [(src, dst)]
-    , nodeLabels := g.nodeLabels  |>.insert src srcLabel |>.insert dst dstLabel
-    , labelToNode := g.labelToNode |>.insert srcLabel src |>.insert dstLabel dst }
+  else
+    let g' : Graph :=
+      { edges      := g.edges ++ [(src, dst)]
+      , nodeLabels := g.nodeLabels  |>.insert src srcLabel |>.insert dst dstLabel
+      , labelToNode := g.labelToNode |>.insert srcLabel src |>.insert dstLabel dst }
+    let sourceNodes := (g'.edges.map Prod.fst).eraseDups
+    if sourceNodes.all (fun n => decide (n ∉ g'.descendantClosure n)) then some g' else none
 
 /-- Safely delete a directed edge `src → dst`.
 
@@ -50,21 +53,15 @@ def deleteEdge (g : Graph) (src dst : NodeId) : Option Graph :=
     let nodeHasIncidentEdge (n : NodeId) : Bool :=
       edges'.any (fun (u, v) => u == n || v == n)
     let nodeLabels' : Std.HashMap NodeId String :=
-      g.nodeLabels.toList.foldl
-        (fun acc (entry : NodeId × String) =>
-          let (n, lbl) := entry
-          if nodeHasIncidentEdge n then acc.insert n lbl else acc)
-        ∅
+      g.nodeLabels.filter (fun n _ => nodeHasIncidentEdge n)
     let labelToNode' : Std.HashMap String NodeId :=
-      nodeLabels'.toList.foldl
-        (fun acc (entry : NodeId × String) =>
-          let (n, lbl) := entry
-          acc.insert lbl n)
-        ∅
-    some
+      Std.HashMap.ofList (nodeLabels'.toList.map (fun (n, lbl) => (lbl, n)))
+    let g' : Graph :=
       { edges := edges'
       , nodeLabels := nodeLabels'
       , labelToNode := labelToNode' }
+    let sourceNodes := (g'.edges.map Prod.fst).eraseDups
+    if sourceNodes.all (fun n => decide (n ∉ g'.descendantClosure n)) then some g' else none
 
 /-- Safely delete node `n` and all incident edges.
 

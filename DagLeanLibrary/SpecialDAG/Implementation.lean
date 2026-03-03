@@ -30,7 +30,7 @@ def successors (g : Graph) (n : NodeId) : List NodeId :=
   (g.edges.filterMap fun (src, dst) =>
     if src == n then some dst else none).eraseDups
 
-private def closureFrom
+def closureFrom
     (next : NodeId → List NodeId)
     (fuel : Nat)
     (frontier visited : List NodeId) : List NodeId :=
